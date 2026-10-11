@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nomad Map</title>
+    <title>Nomad Map | Live</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- PapaParse for CSV -->
@@ -12,52 +12,69 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Inter Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
         /* Map Popup Styling */
-        .leaflet-popup-content-wrapper { border-radius: 0.75rem; padding: 0; overflow: hidden; }
-        .leaflet-popup-content { margin: 0; width: 220px !important; }
+        .leaflet-popup-content-wrapper { border-radius: 1rem; padding: 0; overflow: hidden; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); }
+        .leaflet-popup-content { margin: 0; width: 240px !important; }
         .leaflet-popup-content p { margin: 0; }
-        .custom-popup img { width: 100%; height: 120px; object-fit: cover; }
-        .custom-popup .p-3 { padding: 12px; }
+        .custom-popup img { width: 100%; height: 140px; object-fit: cover; }
+        .custom-popup .p-4 { padding: 16px; }
+        .leaflet-container a.leaflet-popup-close-button { color: white; text-shadow: 0 1px 3px black; padding: 8px; }
+        /* Hide scrollbar for grid */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
-<body class="bg-gray-50 h-screen flex flex-col overflow-hidden">
+<body class="bg-gray-50 h-screen flex flex-col overflow-hidden relative">
 
-    <!-- Top Navigation -->
-    <nav class="bg-white border-b border-gray-200 px-6 py-4 flex flex-col sm:flex-row justify-between items-center z-20 gap-4 shadow-sm">
-        <div class="flex items-center gap-2">
-            <span class="text-2xl">🌍</span>
-            <h1 class="text-xl font-bold text-gray-900 tracking-tight">Nomad Map</h1>
-        </div>
-        
-        <div class="flex items-center gap-4 w-full sm:w-auto">
-            <!-- Filter Dropdown -->
-            <select id="collectionFilter" class="bg-gray-100 border-none text-gray-700 text-sm rounded-lg focus:ring-blue-500 block w-full sm:w-48 p-2.5 outline-none font-semibold cursor-pointer">
-                <option value="All">All Collections</option>
-            </select>
-
-            <!-- View Toggle -->
-            <div class="flex bg-gray-100 p-1 rounded-lg">
-                <button id="btnMap" class="px-4 py-1.5 rounded-md bg-white shadow-sm text-sm font-semibold text-gray-900 transition">Map</button>
-                <button id="btnGrid" class="px-4 py-1.5 rounded-md text-gray-500 text-sm font-semibold hover:text-gray-900 transition">Grid</button>
+    <!-- Floating Top Navigation (Glassmorphism) -->
+    <nav class="absolute top-0 w-full z-[500] px-4 py-4 pointer-events-none">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            
+            <!-- Logo & Live Indicator -->
+            <div class="bg-white/90 backdrop-blur-md shadow-lg border border-gray-100 rounded-full px-5 py-2.5 flex items-center gap-3 pointer-events-auto">
+                <span class="text-2xl">🌍</span>
+                <h1 class="text-lg font-bold text-gray-900 tracking-tight">Nomad Map</h1>
+                <div class="h-4 w-px bg-gray-300 mx-1"></div>
+                <!-- Live Ping Indicator -->
+                <div class="flex items-center gap-1.5" title="Auto-syncing with Google Sheets">
+                    <span class="relative flex h-2.5 w-2.5">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                    </span>
+                    <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Live</span>
+                </div>
+            </div>
+            
+            <!-- Controls -->
+            <div class="flex items-center gap-2 pointer-events-auto bg-white/90 backdrop-blur-md shadow-lg border border-gray-100 p-1.5 rounded-2xl">
+                <select id="collectionFilter" class="bg-transparent border-none text-gray-700 text-sm focus:ring-0 outline-none font-semibold cursor-pointer pl-3 pr-2 py-1.5">
+                    <option value="All">All Collections</option>
+                </select>
+                <div class="h-6 w-px bg-gray-200 mx-1"></div>
+                <div class="flex bg-gray-100 p-1 rounded-xl">
+                    <button id="btnMap" class="px-4 py-1.5 rounded-lg bg-white shadow-sm text-sm font-semibold text-gray-900 transition">Map</button>
+                    <button id="btnGrid" class="px-4 py-1.5 rounded-lg text-gray-500 text-sm font-semibold hover:text-gray-900 transition">List</button>
+                </div>
             </div>
         </div>
     </nav>
 
     <!-- Main Content Area -->
     <main class="flex-1 relative w-full h-full">
-        <!-- Loading Overlay -->
-        <div id="loading" class="absolute inset-0 bg-white/80 z-[1000] flex items-center justify-center backdrop-blur-sm">
-            <div class="text-lg font-semibold text-gray-600 animate-pulse">Loading map data...</div>
+        <!-- Initial Loading Overlay -->
+        <div id="loading" class="absolute inset-0 bg-gray-50 z-[1000] flex flex-col items-center justify-center transition-opacity duration-500">
+            <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+            <div class="text-lg font-semibold text-gray-800">Syncing with Google Sheets...</div>
         </div>
 
         <!-- Map View Container -->
         <div id="mapContainer" class="w-full h-full absolute inset-0 z-10"></div>
 
         <!-- Grid View Container -->
-        <div id="gridContainer" class="w-full h-full absolute inset-0 z-20 bg-gray-50 hidden overflow-y-auto p-6 pb-20">
+        <div id="gridContainer" class="w-full h-full absolute inset-0 z-20 bg-gray-50 hidden overflow-y-auto pt-28 px-6 pb-20">
             <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 max-w-7xl mx-auto">
                 <!-- Cards injected here -->
             </div>
@@ -69,6 +86,9 @@
         // 1. SET YOUR CSV LINK HERE
         // ==========================================
         const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRDk-hPe6yww4nnUXm3oSn-nKmvUlxtkXmfkKCklrhVAQSHvs_ieA1SGIPxavDLLhHeHhSSbVEv7ZEz/pub?output=csv";
+        
+        // Settings
+        const PING_INTERVAL_MS = 15000; // Pings Google Sheets every 15 seconds
 
         // Initialize UI Elements
         const loading = document.getElementById('loading');
@@ -79,128 +99,15 @@
         const btnGrid = document.getElementById('btnGrid');
         const grid = document.getElementById('grid');
 
-        // Initialize Map (OpenStreetMap)
+        // Initialize Map (Beautiful CartoDB BaseMap)
         const map = L.map('mapContainer', { zoomControl: false }).setView([20, 0], 2);
         L.control.zoom({ position: 'bottomright' }).addTo(map);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19
         }).addTo(map);
 
         let allData = [];
+        let previousDataHash = "";
         let mapMarkers = [];
-        let markerGroup = L.featureGroup().addTo(map);
-
-        // ==========================================
-        // 2. FETCH & PROCESS DATA
-        // ==========================================
-        Papa.parse(CSV_URL, {
-            download: true,
-            header: false,
-            complete: function(results) {
-                const data = results.data;
-                let collections = new Set();
-
-                for (let i = data.length - 1; i > 0; i--) {
-                    const row = data[i];
-                    if (row.length < 9 || row[2] === "⏳ Pending" || row[2] === "Collection") continue;
-
-                    const [id, date, collection, name, address, lat, lng, link, image] = row;
-                    collections.add(collection);
-                    
-                    const place = { 
-                        collection, name, address, lat: parseFloat(lat), lng: parseFloat(lng), link, image,
-                        gmaps: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
-                    };
-                    allData.push(place);
-                }
-
-                // Populate Dropdown
-                collections.forEach(col => {
-                    filter.innerHTML += `<option value="${col}">${col}</option>`;
-                });
-
-                renderUI("All");
-                loading.classList.add('hidden');
-            }
-        });
-
-        // ==========================================
-        // 3. RENDER LOGIC (MAP & GRID)
-        // ==========================================
-        function renderUI(selectedCollection) {
-            // Clear existing data
-            grid.innerHTML = '';
-            markerGroup.clearLayers();
-            mapMarkers = [];
-
-            const filteredData = selectedCollection === "All" 
-                ? allData 
-                : allData.filter(p => p.collection === selectedCollection);
-
-            filteredData.forEach(place => {
-                // --- 1. BUILD GRID CARD ---
-                const originalLink = place.link.startsWith('http') ? place.link : place.gmaps;
-                grid.innerHTML += `
-                    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col hover:shadow-md transition duration-200">
-                        <div class="h-40 w-full bg-cover bg-center" style="background-image: url('${place.image}')"></div>
-                        <div class="p-4 flex-grow flex flex-col">
-                            <span class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">${place.collection}</span>
-                            <h3 class="text-base font-bold text-gray-900 mb-1 leading-tight">${place.name}</h3>
-                            <p class="text-gray-500 text-xs mb-4 line-clamp-2">${place.address}</p>
-                            <div class="mt-auto flex gap-2">
-                                <a href="${place.gmaps}" target="_blank" class="flex-1 bg-gray-900 text-white text-center py-2 rounded-lg text-xs font-semibold hover:bg-gray-800 transition">Navigate</a>
-                                <a href="${originalLink}" target="_blank" class="flex-1 bg-gray-100 text-gray-800 text-center py-2 rounded-lg text-xs font-semibold hover:bg-gray-200 transition">Source</a>
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                // --- 2. BUILD MAP MARKER ---
-                if (!isNaN(place.lat) && !isNaN(place.lng)) {
-                    const popupContent = `
-                        <div class="custom-popup">
-                            <img src="${place.image}" alt="${place.name}">
-                            <div class="p-3">
-                                <span class="text-[10px] font-bold text-blue-600 uppercase block mb-1">${place.collection}</span>
-                                <h3 class="text-sm font-bold text-gray-900 mb-2 leading-tight">${place.name}</h3>
-                                <a href="${place.gmaps}" target="_blank" class="block w-full bg-blue-600 text-white text-center py-1.5 rounded text-xs font-semibold hover:bg-blue-700 transition">Open in Maps</a>
-                            </div>
-                        </div>
-                    `;
-                    const marker = L.marker([place.lat, place.lng]).bindPopup(popupContent);
-                    markerGroup.addLayer(marker);
-                }
-            });
-
-            // Adjust map view to fit all markers
-            if (markerGroup.getLayers().length > 0) {
-                map.fitBounds(markerGroup.getBounds(), { padding: [50, 50], maxZoom: 15 });
-            }
-        }
-
-        // ==========================================
-        // 4. EVENT LISTENERS
-        // ==========================================
-        filter.addEventListener('change', (e) => renderUI(e.target.value));
-
-        btnMap.addEventListener('click', () => {
-            mapContainer.classList.remove('hidden');
-            gridContainer.classList.add('hidden');
-            btnMap.classList.add('bg-white', 'shadow-sm', 'text-gray-900');
-            btnMap.classList.remove('text-gray-500', 'hover:text-gray-900');
-            btnGrid.classList.remove('bg-white', 'shadow-sm', 'text-gray-900');
-            btnGrid.classList.add('text-gray-500', 'hover:text-gray-900');
-            map.invalidateSize(); // Fixes map rendering glitch after unhiding
-        });
-
-        btnGrid.addEventListener('click', () => {
-            gridContainer.classList.remove('hidden');
-            mapContainer.classList.add('hidden');
-            btnGrid.classList.add('bg-white', 'shadow-sm', 'text-gray-900');
-            btnGrid.classList.remove('text-gray-500', 'hover:text-gray-900');
-            btnMap.classList.remove('bg-white', 'shadow-sm', 'text-gray-900');
-            btnMap.classList.add('text-gray-500', 'hover:text-gray-900');
-        });
-    </script>
-</body>
-</html>
+        let markerGroup = L.feature
