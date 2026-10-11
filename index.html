@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nomad Map Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans">
+    
+    <nav class="bg-blue-600 p-4 text-white shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">📍 Nomad Map</h1>
+            <p class="text-sm">Live from Telegram</p>
+        </div>
+    </nav>
+
+    <div class="container mx-auto p-6">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-semibold">My Saved Places</h2>
+            <select id="collectionFilter" class="p-2 border rounded-md shadow-sm">
+                <option value="All">All Collections</option>
+            </select>
+        </div>
+
+        <div id="loading" class="text-center text-gray-500 py-10">Loading database...</div>
+        
+        <div id="grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 hidden">
+            <!-- Cards will be injected here -->
+        </div>
+    </div>
+
+    <script>
+        // REPLACE THIS LINK WITH YOUR PUBLISHED CSV LINK
+        const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRDk-hPe6yww4nnUXm3oSn-nKmvUlxtkXmfkKCklrhVAQSHvs_ieA1SGIPxavDLLhHeHhSSbVEv7ZEz/pub?output=csv";
+
+        Papa.parse(CSV_URL, {
+            download: true,
+            header: false,
+            complete: function(results) {
+                const data = results.data;
+                const grid = document.getElementById('grid');
+                const loading = document.getElementById('loading');
+                const filter = document.getElementById('collectionFilter');
+                
+                let collections = new Set();
+                grid.innerHTML = '';
+
+                // Skip header row, process backwards to show newest first
+                for (let i = data.length - 1; i > 0; i--) {
+                    const row = data[i];
+                    if (row.length < 9 || row[2] === "⏳ Pending") continue;
+
+                    const [id, date, collection, name, address, lat, lng, link, image] = row;
+                    collections.add(collection);
+
+                    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+                    const originalLink = link.startsWith('http') ? link : mapUrl;
+
+                    const card = `
+                        <div class="bg-white rounded-xl shadow-lg overflow-hidden flex flex-col place-card" data-collection="${collection}">
+                            <div class="h-48 w-full bg-cover bg-center" style="background-image: url('${image}')"></div>
+                            <div class="p-4 flex-grow flex flex-col">
+                                <span class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">${collection}</span>
+                                <h3 class="text-lg font-bold mb-1">${name}</h3>
+                                <p class="text-gray-500 text-sm mb-4 line-clamp-2">${address}</p>
+                                <div class="mt-auto flex gap-2">
+                                    <a href="${mapUrl}" target="_blank" class="flex-1 bg-gray-900 text-white text-center py-2 rounded-lg text-sm font-semibold hover:bg-gray-700 transition">Map</a>
+                                    <a href="${originalLink}" target="_blank" class="flex-1 bg-gray-200 text-gray-800 text-center py-2 rounded-lg text-sm font-semibold hover:bg-gray-300 transition">Source</a>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    grid.innerHTML += card;
+                }
+
+                // Populate filter dropdown
+                collections.forEach(col => {
+                    filter.innerHTML += `<option value="${col}">${col}</option>`;
+                });
+
+                loading.classList.add('hidden');
+                grid.classList.remove('hidden');
+
+                // Filter logic
+                filter.addEventListener('change', (e) => {
+                    const selected = e.target.value;
+                    document.querySelectorAll('.place-card').forEach(card => {
+                        if (selected === "All" || card.dataset.collection === selected) {
+                            card.style.display = "flex";
+                        } else {
+                            card.style.display = "none";
+                        }
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html>
