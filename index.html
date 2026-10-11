@@ -99,7 +99,7 @@
         const btnGrid = document.getElementById('btnGrid');
         const grid = document.getElementById('grid');
 
-        // Initialize Map (Beautiful CartoDB BaseMap)
+        // Initialize Map (OpenStreetMap)
         const map = L.map('mapContainer', { zoomControl: false }).setView([20, 0], 2);
         L.control.zoom({ position: 'bottomright' }).addTo(map);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -110,4 +110,161 @@
         let allData = [];
         let previousDataHash = "";
         let mapMarkers = [];
-        let markerGroup = L.feature
+        let markerGroup = L.featureGroup().addTo(map);
+        let activeCollection = "All";
+        let isFirstLoad = true;
+
+        // ==========================================
+        // 2. AUTO-PING DATA FETCHING ENGINE
+        // ==========================================
+        function fetchSheetData() {
+            // Append timestamp to bypass aggressive browser caching
+            const noCacheUrl = `${CSV_URL}&t=${new Date().getTime()}`;
+            
+            Papa.parse(noCacheUrl, {
+                download: true,
+                header: false,
+                complete: function(results) {
+                    const data = results.data;
+                    
+                    // Convert row data to a string to detect changes
+                    const currentDataHash = JSON.stringify(data);
+                    
+                    // Only update UI if the Google Sheet has actually changed
+                    if (currentDataHash !== previousDataHash) {
+                        previousDataHash = currentDataHash;
+                        processData(data);
+                    }
+                },
+                error: function(err) {
+                    console.error("Error parsing CSV: ", err);
+                }
+            });
+        }
+
+        function processData(data) {
+            let newAllData = [];
+            let collections = new Set();
+
+            // Process backwards to show newest items first
+            for (let i = data.length - 1; i > 0; i--) {
+                const row = data[i];
+                if (row.length < 9 || row[2] === "⏳ Pending" || row[2] === "Collection") continue;
+
+                const [id, date, collection, name, address, lat, lng, link, image] = row;
+                collections.add(collection);
+                
+                newAllData.push({ 
+                    collection, name, address, lat: parseFloat(lat), lng: parseFloat(lng), link, image,
+                    gmaps: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+                });
+            }
+
+            allData = newAllData;
+
+            // Update Dropdown without losing current selection
+            filter.innerHTML = `<option value="All">All Collections</option>`;
+            collections.forEach(col => {
+                const isSelected = col === activeCollection ? "selected" : "";
+                filter.innerHTML += `<option value="${col}" ${isSelected}>${col}</option>`;
+            });
+
+            renderUI();
+
+            if (isFirstLoad) {
+                loading.style.opacity = '0';
+                setTimeout(() => loading.classList.add('hidden'), 500);
+                isFirstLoad = false;
+            }
+        }
+
+        // ==========================================
+        // 3. RENDER LOGIC (MAP & GRID)
+        // ==========================================
+        function renderUI() {
+            grid.innerHTML = '';
+            markerGroup.clearLayers();
+
+            const filteredData = activeCollection === "All" 
+                ? allData 
+                : allData.filter(p => p.collection === activeCollection);
+
+            filteredData.forEach(place => {
+                const originalLink = place.link.startsWith('http') ? place.link : place.gmaps;
+                
+                // Build Grid Card
+                grid.innerHTML += `
+                    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col hover:shadow-md transition duration-200 group">
+                        <div class="h-48 w-full bg-cover bg-center relative" style="background-image: url('${place.image}')">
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition duration-300"></div>
+                        </div>
+                        <div class="p-4 flex-grow flex flex-col">
+                            <span class="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1 bg-blue-50 w-max px-2 py-0.5 rounded-md">${place.collection}</span>
+                            <h3 class="text-base font-bold text-gray-900 mb-1 leading-tight">${place.name}</h3>
+                            <p class="text-gray-500 text-xs mb-4 line-clamp-2">${place.address}</p>
+                            <div class="mt-auto flex gap-2">
+                                <a href="${place.gmaps}" target="_blank" class="flex-1 bg-blue-600 text-white text-center py-2.5 rounded-xl text-xs font-semibold hover:bg-blue-700 transition">Navigate</a>
+                                <a href="${originalLink}" target="_blank" class="flex-1 bg-gray-100 text-gray-800 text-center py-2.5 rounded-xl text-xs font-semibold hover:bg-gray-200 transition">Source</a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Build Map Marker
+                if (!isNaN(place.lat) && !isNaN(place.lng)) {
+                    const popupContent = `
+                        <div class="custom-popup">
+                            <img src="${place.image}" alt="${place.name}">
+                            <div class="p-4">
+                                <span class="text-[10px] font-bold text-blue-600 uppercase block mb-1">${place.collection}</span>
+                                <h3 class="text-base font-bold text-gray-900 mb-3 leading-tight">${place.name}</h3>
+                                <div class="flex gap-2">
+                                    <a href="${place.gmaps}" target="_blank" class="flex-1 bg-blue-600 text-white text-center py-2 rounded-lg text-xs font-semibold hover:bg-blue-700 transition">Open Maps</a>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    const marker = L.marker([place.lat, place.lng]).bindPopup(popupContent);
+                    markerGroup.addLayer(marker);
+                }
+            });
+
+            // Adjust map view to fit all markers if this is a filter change
+            if (markerGroup.getLayers().length > 0) {
+                map.fitBounds(markerGroup.getBounds(), { padding: [50, 50], maxZoom: 15 });
+            }
+        }
+
+        // ==========================================
+        // 4. EVENT LISTENERS & INITIALIZATION
+        // ==========================================
+        filter.addEventListener('change', (e) => {
+            activeCollection = e.target.value;
+            renderUI();
+        });
+
+        btnMap.addEventListener('click', () => {
+            mapContainer.classList.remove('hidden');
+            gridContainer.classList.add('hidden');
+            btnMap.classList.add('bg-white', 'shadow-sm', 'text-gray-900');
+            btnMap.classList.remove('text-gray-500', 'hover:text-gray-900', 'bg-transparent');
+            btnGrid.classList.remove('bg-white', 'shadow-sm', 'text-gray-900');
+            btnGrid.classList.add('text-gray-500', 'hover:text-gray-900', 'bg-transparent');
+            map.invalidateSize(); 
+        });
+
+        btnGrid.addEventListener('click', () => {
+            gridContainer.classList.remove('hidden');
+            mapContainer.classList.add('hidden');
+            btnGrid.classList.add('bg-white', 'shadow-sm', 'text-gray-900');
+            btnGrid.classList.remove('text-gray-500', 'hover:text-gray-900', 'bg-transparent');
+            btnMap.classList.remove('bg-white', 'shadow-sm', 'text-gray-900');
+            btnMap.classList.add('text-gray-500', 'hover:text-gray-900', 'bg-transparent');
+        });
+
+        // Start the engine
+        fetchSheetData();                      // Initial Load
+        setInterval(fetchSheetData, PING_INTERVAL_MS); // Auto-Ping every 15 seconds
+    </script>
+</body>
+</html>
